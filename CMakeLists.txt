@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.21)
+cmake_minimum_required(VERSION 3.7)
 
 # Set policy for setting the MSVC runtime library for static MSVC builds
 if(POLICY CMP0091)
@@ -7,13 +7,13 @@ endif()
 
 project(ctranslate2)
 
-option(WITH_ROCM "Compile with CUDA and ROCm" ON)
 option(WITH_MKL "Compile with Intel MKL backend" ON)
 option(WITH_DNNL "Compile with DNNL backend" OFF)
 option(WITH_ACCELERATE "Compile with Accelerate backend" OFF)
 option(WITH_OPENBLAS "Compile with OpenBLAS backend" OFF)
 option(WITH_RUY "Compile with Ruy backend" OFF)
 option(WITH_CUDA "Compile with CUDA backend" OFF)
+option(WITH_ROCM "Compile with ROCM/HIP backend" OFF)
 option(WITH_CUDNN "Compile with cuDNN backend" OFF)
 option(CUDA_DYNAMIC_LOADING "Dynamically load CUDA libraries at runtime" OFF)
 option(ENABLE_CPU_DISPATCH "Compile CPU kernels for multiple ISA and dispatch at runtime" ON)
@@ -53,13 +53,12 @@ set(OPENMP_RUNTIME "INTEL" CACHE STRING "OpenMP runtime (INTEL, COMP, NONE)")
 if(WITH_ROCM)
   set_property(CACHE OPENMP_RUNTIME PROPERTY STRINGS INTEL COMP NONE)
 endif()
-
 # Set Release build type by default to get sane performance.
 if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release)
 endif(NOT CMAKE_BUILD_TYPE)
 if(WITH_ROCM)
-  set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS Debug Release RelWithDebInfo MinSizeRel)
+set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS Debug Release RelWithDebInfo MinSizeRel)
 endif()
 # Set CXX flags.
 set(CMAKE_CXX_STANDARD 17)
@@ -123,7 +122,7 @@ set(SOURCES
   src/cpu/primitives.cc
   src/decoding.cc
   src/decoding_utils.cc
-  src/devices.cc
+  ### src/devices.cc
   src/dtw.cc
   src/encoder.cc
   src/env.cc
@@ -146,7 +145,7 @@ set(SOURCES
   src/models/sequence_to_sequence.cc
   src/models/transformer.cc
   ### src/models/wav2vec2.cc
-  src/models/wav2vec2bert.cc
+  ### src/models/wav2vec2bert.cc
   ### src/models/whisper.cc
   src/ops/activation.cc
   src/ops/add.cc
@@ -456,13 +455,26 @@ if (WITH_ROCM)
   if(WIN32)
       set(ROCM_ROOT "$ENV{HIP_PATH}" CACHE PATH "Root directory of the ROCm installation")
   else()
-      if (NOT DEFINED ROCM_PATH )
-          if (NOT DEFINED ENV{ROCM_PATH} )
-          set(ROCM_PATH "/opt/rocm" CACHE PATH "Root directory of the ROCm installation")
-          else()
-          set(ROCM_PATH $ENV{ROCM_PATH} CACHE PATH "Root directory of the ROCm installation")
-          endif()
+   if (NOT DEFINED ROCM_PATH )
+      if (NOT DEFINED ENV{ROCM_PATH} )
+        set(ROCM_PATH "/opt/rocm" CACHE PATH "Root directory of the ROCm installation")
+      else()
+        set(ROCM_PATH $ENV{ROCM_PATH} CACHE PATH "Root directory of the ROCm installation")
       endif()
+   endif()
+    set(CMAKE_MODULE_PATH ${ROCM_PATH}/lib/cmake)
+  set(GPU_RUNTIME "HIP" CACHE STRING "GPU_RUNTIME (HIP and CUDA)")
+  set_property(CACHE GPU_RUNTIME PROPERTY STRINGS CUDA HIP)
+  if(WIN32)
+      set(ROCM_ROOT "$ENV{HIP_PATH}" CACHE PATH "Root directory of the ROCm installation")
+  else()
+    if (NOT DEFINED ROCM_PATH )
+        if (NOT DEFINED ENV{ROCM_PATH} )
+          set(ROCM_PATH "/opt/rocm" CACHE PATH "Root directory of the ROCm installation")
+        else()
+          set(ROCM_PATH $ENV{ROCM_PATH} CACHE PATH "Root directory of the ROCm installation")
+        endif()
+    endif()
       set(CMAKE_MODULE_PATH ${ROCM_PATH}/lib/cmake)
   endif()
   set(GPU_SOURCES
@@ -490,13 +502,13 @@ if (WITH_ROCM)
     )
   add_definitions(-DCT2_WITH_CUDA)
   list(APPEND GPU_SOURCES   
-      src/devices.cc 
-      src/types.cc
-      src/storage_view.cc
-      src/utils.cc
-      src/models/model.cc
-      src/models/wav2vec2.cc
-      src/models/whisper.cc
+ 	src/devices.cc 
+	src/types.cc
+        src/storage_view.cc
+        src/utils.cc
+        src/models/model.cc
+        src/models/wav2vec2.cc
+        src/models/whisper.cc
       )
   enable_language(${GPU_RUNTIME})
   set(CMAKE_${GPU_RUNTIME}_STANDARD 17)
@@ -512,8 +524,8 @@ if (WITH_ROCM)
   endif()
   # list(APPEND GPU_SOURCES   src/devices.cc src/types.cc src/utils.cc src/models/model.cc src/models/whisper.cc)
   add_library(${PROJECT_NAME} SHARED
-      ${SOURCES}
-      ${GPU_SOURCES}
+    ${SOURCES}
+    ${GPU_SOURCES}
   )
   set_source_files_properties(${GPU_SOURCES} PROPERTIES LANGUAGE ${GPU_RUNTIME})
   set_source_files_properties(${SOURCES}  PROPERTIES LANGUAGE CXX)
@@ -522,81 +534,36 @@ if (WITH_ROCM)
           #       find_library(LIBRT NAMES "librt.so.1" PATHS  /lib/x86_64-linux-gnu/ NO_DEFAULT_PATH )
           find_package(miopen REQUIRED)
           find_library(LIBRT rt)
-      if(LIBRT)
-              message(STATUS "Librt: " ${LIBRT})
-              target_link_libraries(${PROJECT_NAME} PUBLIC MIOpen ${LIBRT} )
-      else()
-          target_link_libraries(${PROJECT_NAME} PUBLIC MIOpen )
-      endif()
+    if(LIBRT)
+            message(STATUS "Librt: " ${LIBRT})
+            target_link_libraries(${PROJECT_NAME} PUBLIC MIOpen ${LIBRT} )
+    else()
+        target_link_libraries(${PROJECT_NAME} PUBLIC MIOpen )
+    endif()
   endif()
+endif()
 
 if (WITH_CUDA)
-  else()
-    find_package(CUDA 11.0 REQUIRED)
-    list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
-    if (WITH_TENSOR_PARALLEL)
-      find_package(MPI REQUIRED)
-      find_package(NCCL REQUIRED)
-      include_directories(${NCCL_INCLUDE_DIR})
-      include_directories(${MPI_INCLUDE_PATH})
-      if(CUDA_DYNAMIC_LOADING)
-        list(APPEND SOURCES src/cuda/mpi_stub.cc)
-        list(APPEND SOURCES src/cuda/nccl_stub.cc)
-        add_definitions(-DCT2_WITH_CUDA_DYNAMIC_LOADING)
-      else ()
-        list(APPEND LIBRARIES ${NCCL_LIBRARY})
-        list(APPEND LIBRARIES ${MPI_LIBRARIES})
-      endif ()
-      add_definitions(-DCT2_WITH_TENSOR_PARALLEL)
+  find_package(CUDA 11.0 REQUIRED)
+  list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
+  if (WITH_TENSOR_PARALLEL)
+    find_package(MPI REQUIRED)
+    find_package(NCCL REQUIRED)
+    include_directories(${NCCL_INCLUDE_DIR})
+    include_directories(${MPI_INCLUDE_PATH})
+    if(CUDA_DYNAMIC_LOADING)
+      list(APPEND SOURCES src/cuda/mpi_stub.cc)
+      list(APPEND SOURCES src/cuda/nccl_stub.cc)
+      add_definitions(-DCT2_WITH_CUDA_DYNAMIC_LOADING)
+    else ()
+      list(APPEND LIBRARIES ${NCCL_LIBRARY})
+      list(APPEND LIBRARIES ${MPI_LIBRARIES})
     endif ()
-  endif()
+    add_definitions(-DCT2_WITH_TENSOR_PARALLEL)
+  endif ()
   include_directories(${CUDA_TOOLKIT_ROOT_DIR}/include)
 
   add_definitions(-DCT2_WITH_CUDA)
-  list(APPEND GPU_SOURCES   
-    src/devices.cc 
-    src/types.cc
-    src/storage_view.cc
-    src/utils.cc
-    src/models/model.cc
-    src/models/wav2vec2.cc
-    src/models/whisper.cc
-    )
-  if(GPU_RUNTIME STREQUAL "HIP")
-    enable_language(${GPU_RUNTIME})
-    set(CMAKE_${GPU_RUNTIME}_STANDARD 17)
-    set(CMAKE_${GPU_RUNTIME}_EXTENSIONS OFF)
-    set(CMAKE_${GPU_RUNTIME}_STANDARD_REQUIRED ON)
-    add_definitions(-D__HIP_PLATFORM_AMD__)
-    find_package(hipblas REQUIRED)
-    find_package(hip REQUIRED)
-
-    if(WITH_CUDNN)
-        find_package(miopen REQUIRED)
-        add_definitions(-DCT2_WITH_CUDNN)
-    endif()
- #    list(APPEND GPU_SOURCES   src/devices.cc src/types.cc src/utils.cc src/models/model.cc src/models/whisper.cc)
-    add_library(${PROJECT_NAME} SHARED
-    ${SOURCES}
-    ${GPU_SOURCES}
-    )
-    set_source_files_properties(${GPU_SOURCES} PROPERTIES LANGUAGE ${GPU_RUNTIME})
-    set_source_files_properties(${SOURCES}  PROPERTIES LANGUAGE CXX)
-    target_link_libraries(${PROJECT_NAME} PUBLIC roc::hipblas)
-    if(WITH_CUDNN)
-            #       find_library(LIBRT NAMES "librt.so.1" PATHS  /lib/x86_64-linux-gnu/ NO_DEFAULT_PATH )
-            find_package(miopen REQUIRED)
-            find_library(LIBRT rt)
-      if(LIBRT)
-              message(STATUS "Librt: " ${LIBRT})
-              target_link_libraries(${PROJECT_NAME} PUBLIC MIOpen ${LIBRT} )
-      else()
-         target_link_libraries(${PROJECT_NAME} PUBLIC MIOpen )
-      endif()
-    endif()
-  else()
-    find_package(CUDA 11.0 REQUIRED)
-    
   if(MSVC)
     if(BUILD_SHARED_LIBS)
       list(APPEND CUDA_NVCC_FLAGS "-Xcompiler=/MD$<$<CONFIG:Debug>:d>")
