@@ -1,8 +1,12 @@
 #include "ctranslate2/ops/multinomial.h"
-
-#include <cub/block/block_reduce.cuh>
-#include <cub/block/block_scan.cuh>
-
+#ifndef __HIP_PLATFORM_AMD__
+  #include <cub/block/block_reduce.cuh>
+  #include <cub/block/block_scan.cuh>
+#else
+  #include <hipcub/hipcub.hpp>
+  #include <hipcub/block/block_reduce.hpp>
+  #include <hipcub/block/block_scan.hpp>
+#endif
 #include "cuda/helpers.h"
 #include "cuda/random.h"
 
@@ -24,7 +28,11 @@ namespace ctranslate2 {
     constexpr dim_t num_threads = 256;
 
     template <typename In, typename Out>
-    __global__ void multinomial_kernel(const In* probs,
+    __global__ void 
+#ifdef __HIP_PLATFORM_AMD__
+    __launch_bounds__(num_threads)
+#endif
+    multinomial_kernel(const In* probs,
                                        cuda::index_t class_size,
                                        Out* output,
                                        curandStatePhilox4_32_10_t* states) {

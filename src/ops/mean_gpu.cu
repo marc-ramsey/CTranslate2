@@ -1,7 +1,10 @@
 #include "ctranslate2/ops/mean.h"
-
-#include <cub/block/block_reduce.cuh>
-
+#ifndef __HIP_PLATFORM_AMD__
+  #include <cub/block/block_reduce.cuh>
+#else
+#include <hipcub/hipcub.hpp>
+#include <hipcub/block/block_reduce.hpp>
+#endif
 #include "type_dispatch.h"
 #include "cuda/helpers.h"
 
@@ -11,7 +14,11 @@ namespace ctranslate2 {
     constexpr dim_t num_threads = 256;
 
     template <typename T, typename AccumT>
-    __global__ void mean_kernel(const T* input,
+    __global__ void 
+#ifdef __HIP_PLATFORM_AMD__
+    __launch_bounds__(num_threads)
+#endif
+    mean_kernel(const T* input,
                                 const cuda::index_t outer_size,
                                 const cuda::index_t axis_size,
                                 const cuda::index_t inner_size,

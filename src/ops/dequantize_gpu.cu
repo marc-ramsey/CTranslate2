@@ -5,6 +5,15 @@
 namespace ctranslate2 {
   namespace ops {
 
+#ifdef __HIP_PLATFORM_AMD__
+   template <typename InT, typename OutT>
+    struct dequantize_func {
+      __device__ __forceinline__
+      OutT operator()(float scale, InT x) const {
+        return OutT(__fdividef(float(x), scale));
+      }
+    };
+#else
     template <typename InT, typename OutT>
     struct dequantize_func {
       __device__ __forceinline__
@@ -12,7 +21,7 @@ namespace ctranslate2 {
         return __fdividef(static_cast<float>(x), scale);
       }
     };
-
+#endif
     template <Device D, typename InT, typename OutT>
     void Dequantize::dequantize(const StorageView& input,
                                 const StorageView& scale,
