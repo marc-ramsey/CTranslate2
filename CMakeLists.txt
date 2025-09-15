@@ -760,7 +760,8 @@ if (WITH_CUDA)
 
 elseif(WITH_CUDNN)
   message(FATAL_ERROR "WITH_CUDNN=ON requires WITH_CUDA=ON")
-#if ()
+endif()
+# else()
 #  add_library(${PROJECT_NAME} ${SOURCES})
 # endif()
 
